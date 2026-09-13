@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { adminClient } from "../lib/client";
 import { AssignModal } from "../components/AssignModal";
 import { StationActinoModal } from "../components/StationActionModal";
@@ -7,6 +7,179 @@ import { StationTerminal } from "../components/StationTerminal";
 import type { StationTarget } from "../lib/actions";
 import { useStationState } from "../context/station";
 import type { Station } from "@client/v1/admin/station_pb";
+
+type SortKey = "connected" | "loggedIn";
+type ConnectionKey = "online" | "offline";
+type SessionKey = "in" | "out";
+type Selection<K extends string> = Record<K, boolean>;
+
+const CONNECTION_OPTIONS: { key: ConnectionKey; label: string }[] = [
+  { key: "online", label: "Online" },
+  { key: "offline", label: "Offline" },
+];
+
+const SESSION_OPTIONS: { key: SessionKey; label: string }[] = [
+  { key: "in", label: "Logged in" },
+  { key: "out", label: "Logged out" },
+];
+
+const DEFAULT_CONNECTION: Selection<ConnectionKey> = {
+  online: true,
+  offline: false,
+};
+
+const DEFAULT_SESSION: Selection<SessionKey> = { in: true, out: true };
+
+function FilterMenu({
+  connection,
+  session,
+  onConnectionToggle,
+  onSessionToggle,
+  onReset,
+}: {
+  connection: Selection<ConnectionKey>;
+  session: Selection<SessionKey>;
+  onConnectionToggle: (key: ConnectionKey) => void;
+  onSessionToggle: (key: SessionKey) => void;
+  onReset: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const hiddenCount = [
+    ...Object.values(connection),
+    ...Object.values(session),
+  ].filter((selected) => !selected).length;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+          hiddenCount > 0
+            ? "bg-primary-500/10 border-primary-500/30 text-primary-400"
+            : "bg-surface-800 border-surface-600 text-gray-300 hover:bg-surface-700"
+        }`}
+      >
+        Filters
+        {hiddenCount > 0 && (
+          <span className="px-1.5 rounded-full bg-primary-500/20 text-xs">
+            {hiddenCount}
+          </span>
+        )}
+        <svg
+          className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-10 mt-2 w-60 p-3 space-y-3 bg-surface-800 border border-surface-600 rounded-xl shadow-xl">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-500 mb-1.5">
+              Connection
+            </p>
+            <div className="flex gap-1">
+              {CONNECTION_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() => onConnectionToggle(option.key)}
+                  className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
+                    connection[option.key]
+                      ? "bg-primary-500 text-white"
+                      : "bg-surface-700 text-gray-400 hover:bg-surface-600"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-500 mb-1.5">
+              Session
+            </p>
+            <div className="flex gap-1">
+              {SESSION_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() => onSessionToggle(option.key)}
+                  className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
+                    session[option.key]
+                      ? "bg-primary-500 text-white"
+                      : "bg-surface-700 text-gray-400 hover:bg-surface-600"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={onReset}
+            className="w-full py-1.5 rounded-md text-xs text-gray-400 hover:text-white hover:bg-surface-700 transition-colors"
+          >
+            Reset to online stations
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortHeader({
+  label,
+  active,
+  direction,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  direction: "asc" | "desc";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 text-sm font-semibold text-gray-300 hover:text-white transition-colors"
+    >
+      {label}
+      <svg
+        className={`w-3 h-3 transition-transform ${active ? "text-primary-400" : "text-gray-600"} ${active && direction === "asc" ? "rotate-180" : ""}`}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
+      </svg>
+    </button>
+  );
+}
 
 export function StationsPage() {
   const queryClient = useQueryClient();
@@ -18,6 +191,15 @@ export function StationsPage() {
   >(null);
   const [expandedIps, setExpandedIps] = useState<Set<string>>(new Set());
   const { getState: getStationsState, connectedCount } = useStationState();
+  const [search, setSearch] = useState("");
+  const [connection, setConnection] =
+    useState<Selection<ConnectionKey>>(DEFAULT_CONNECTION);
+  const [session, setSession] =
+    useState<Selection<SessionKey>>(DEFAULT_SESSION);
+  const [sort, setSort] = useState<{
+    key: SortKey;
+    direction: "asc" | "desc";
+  } | null>(null);
 
   const { data: stationsData, isLoading } = useQuery({
     queryKey: ["stations"],
@@ -34,16 +216,42 @@ export function StationsPage() {
 
   const ipToTeam = new Map(teams.filter((t) => t.ip).map((t) => [t.ip!, t]));
 
+  const query = search.trim().toLowerCase();
+
+  const matchedStations = stations.filter((station) => {
+    const { connected, loggedIn } = getStationsState(station.ip);
+    if (query && !station.ip.toLowerCase().includes(query)) return false;
+    if (!connection[connected ? "online" : "offline"]) return false;
+    return session[loggedIn ? "in" : "out"];
+  });
+
+  const visibleStations = sort
+    ? [...matchedStations].sort(
+        (a, b) =>
+          (Number(getStationsState(b.ip)[sort.key]) -
+            Number(getStationsState(a.ip)[sort.key])) *
+          (sort.direction === "desc" ? 1 : -1),
+      )
+    : matchedStations;
+
   const allSelected =
-    stations.length > 0 && selectedIps.size === stations.length;
+    visibleStations.length > 0 &&
+    visibleStations.every((station) => selectedIps.has(station.ip));
   const someSelected = selectedIps.size > 0 && !allSelected;
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIps(new Set());
-    } else {
-      setSelectedIps(new Set(stations.map((s) => s.ip)));
-    }
+    setSelectedIps(
+      allSelected
+        ? new Set()
+        : new Set(visibleStations.map((station) => station.ip)),
+    );
+  };
+
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) => {
+      if (prev?.key !== key) return { key, direction: "desc" };
+      return prev.direction === "desc" ? { key, direction: "asc" } : null;
+    });
   };
 
   const toggleOne = (ip: string) => {
@@ -110,10 +318,55 @@ export function StationsPage() {
           </span>
         </div>
       </div>
+      <div className="flex items-center justify-end gap-2 mb-4">
+        <div className="relative">
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"
+            />
+          </svg>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search IP"
+            className="w-44 bg-surface-800 border border-surface-600 rounded-lg pl-9 pr-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary-500"
+          />
+        </div>
+        <FilterMenu
+          connection={connection}
+          session={session}
+          onConnectionToggle={(key) =>
+            setConnection((prev) => ({ ...prev, [key]: !prev[key] }))
+          }
+          onSessionToggle={(key) =>
+            setSession((prev) => ({ ...prev, [key]: !prev[key] }))
+          }
+          onReset={() => {
+            setConnection(DEFAULT_CONNECTION);
+            setSession(DEFAULT_SESSION);
+          }}
+        />
+      </div>
       {isLoading ? (
         <div className="text-gray-400">Loading...</div>
       ) : stations.length === 0 ? (
         <div className="text-center py-20 text-gray-400">No stations found</div>
+      ) : visibleStations.length === 0 ? (
+        <div className="text-center py-20">
+          <p className="text-gray-400">No stations match your filters</p>
+          <p className="text-gray-600 text-sm mt-1">
+            Widen the search or turn a filter back on to see stations again
+          </p>
+        </div>
       ) : (
         <div className="bg-surface-800 rounded-xl border border-surface-600 overflow-hidden shadow-xl">
           <table className="w-full">
@@ -159,11 +412,21 @@ export function StationsPage() {
                 <th className="text-left px-6 py-4 text-sm font-semibold text-gray-300">
                   Team
                 </th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-300 w-36">
-                  Logged In
+                <th className="text-left px-6 py-4 w-36">
+                  <SortHeader
+                    label="Logged In"
+                    active={sort?.key === "loggedIn"}
+                    direction={sort?.direction ?? "desc"}
+                    onClick={() => toggleSort("loggedIn")}
+                  />
                 </th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-300 w-36">
-                  Status
+                <th className="text-left px-6 py-4 w-36">
+                  <SortHeader
+                    label="Status"
+                    active={sort?.key === "connected"}
+                    direction={sort?.direction ?? "desc"}
+                    onClick={() => toggleSort("connected")}
+                  />
                 </th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-gray-300 w-32">
                   Actions
@@ -171,7 +434,7 @@ export function StationsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-700">
-              {stations.map((station) => {
+              {visibleStations.map((station) => {
                 const team = ipToTeam.get(station.ip);
                 const connectionState = getStationsState(station.ip);
 
@@ -285,16 +548,8 @@ export function StationsPage() {
                           </button>
                           <button
                             onClick={() => toggleTerminal(station.ip)}
-                            disabled={
-                              !connectionState.connected &&
-                              !expandedIps.has(station.ip)
-                            }
-                            title={
-                              !connectionState.connected
-                                ? "Terminal requires the station to be online"
-                                : undefined
-                            }
-                            className={`px-1.5 py-1.5 text-sm rounded-r-lg border-l border-surface-700 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+                            title="Toggle console"
+                            className={`px-1.5 py-1.5 text-sm rounded-r-lg border-l border-surface-700 transition-all ${
                               expandedIps.has(station.ip)
                                 ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                                 : "bg-surface-600 hover:bg-surface-500 text-gray-400"

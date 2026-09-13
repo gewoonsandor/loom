@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { create } from "@bufbuild/protobuf";
 import { adminClient } from "../lib/client";
 import { useCommandStore } from "../context/command";
+import { useStationState } from "../context/station";
 import { CustomCommandSchema } from "@client/v1/admin/station_pb";
 
 type StationTerminalProps = {
@@ -10,9 +11,18 @@ type StationTerminalProps = {
 
 export function StationTerminal({ ip }: StationTerminalProps) {
   const { register, getHistory } = useCommandStore();
-  const [input, setInput] = useState("");
+  const { getState } = useStationState();
+  const [draft, setDraft] = useState("");
+  const [recalledIndex, setRecalledIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const history = getHistory(ip);
+  const connected = getState(ip).connected;
+
+  const sentCommands = history.map((entry) => entry.command);
+  const input =
+    recalledIndex === null
+      ? draft
+      : sentCommands[sentCommands.length - 1 - recalledIndex];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -22,7 +32,7 @@ export function StationTerminal({ ip }: StationTerminalProps) {
 
   const handleSubmit = () => {
     const command = input.trim();
-    if (!command) return;
+    if (!command || !connected) return;
 
     const id = crypto.randomUUID();
     register(id, [ip], command);
@@ -30,7 +40,31 @@ export function StationTerminal({ ip }: StationTerminalProps) {
       case: "custom",
       value: create(CustomCommandSchema, { id, command }),
     });
-    setInput("");
+    setDraft("");
+    setRecalledIndex(null);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSubmit();
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (sentCommands.length === 0) return;
+      setRecalledIndex((prev) =>
+        prev === null ? 0 : Math.min(prev + 1, sentCommands.length - 1),
+      );
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setRecalledIndex((prev) =>
+        prev === null || prev === 0 ? null : prev - 1,
+      );
+    }
   };
 
   return (
@@ -58,17 +92,27 @@ export function StationTerminal({ ip }: StationTerminalProps) {
         ))}
       </div>
       <div className="flex items-center gap-2 border-t border-surface-700 px-4 py-2">
-        <span className="text-emerald-400 shrink-0">&gt;</span>
+        <span
+          className={`shrink-0 ${connected ? "text-emerald-400" : "text-gray-600"}`}
+        >
+          &gt;
+        </span>
         <input
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSubmit();
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setRecalledIndex(null);
           }}
-          placeholder="Type a command..."
-          className="flex-1 bg-transparent text-gray-200 placeholder-gray-600 focus:outline-none"
-          autoFocus
+          onKeyDown={handleKeyDown}
+          disabled={!connected}
+          placeholder={
+            connected
+              ? "Type a command..."
+              : "Station is offline — commands can't be sent"
+          }
+          className="flex-1 bg-transparent text-gray-200 placeholder-gray-600 focus:outline-none disabled:cursor-not-allowed"
+          autoFocus={connected}
         />
       </div>
     </div>
