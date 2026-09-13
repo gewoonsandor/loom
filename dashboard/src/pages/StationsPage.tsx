@@ -285,7 +285,10 @@ export function StationsPage() {
                           </button>
                           <button
                             onClick={() => toggleTerminal(station.ip)}
-                            disabled={!connectionState.connected}
+                            disabled={
+                              !connectionState.connected &&
+                              !expandedIps.has(station.ip)
+                            }
                             title={
                               !connectionState.connected
                                 ? "Terminal requires the station to be online"
