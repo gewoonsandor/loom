@@ -4,13 +4,16 @@ use sqlx::PgPool;
 
 use crate::{
     config::IcpcApiConfig,
-    domain::{ContestRepository, MapRepository, StationRepository, TeamRepository},
+    domain::{
+        ContestRepository, MapRepository, StationRepository, TeamRepository, WallpaperRepository,
+    },
 };
 
 mod contest;
 mod map;
 mod station;
 mod team;
+mod wallpaper;
 
 mod utils;
 
@@ -57,5 +60,9 @@ impl Repositories {
 
     pub fn get_station(&self) -> Arc<dyn StationRepository> {
         Arc::new(station::StationRepo::new(self.pool.clone()))
+    }
+
+    pub fn get_wallpaper(&self) -> Arc<dyn WallpaperRepository> {
+        Arc::new(wallpaper::WallpaperRepo::new(self.pool.clone()))
     }
 }

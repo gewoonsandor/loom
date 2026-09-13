@@ -7,6 +7,7 @@ import {
   SetMapRequestSchema,
   type Contest,
 } from "@client/v1/admin/contest_pb";
+import { SystemService } from "@client/v1/admin/system_pb";
 import {
   AdminEventSchema,
   CommandOutputRequestSchema,
@@ -42,6 +43,38 @@ const team_client = createClient(TeamService, transport);
 const station_client = createClient(StationService, transport);
 const map_client = createClient(MapService, transport);
 const broadcast_client = createClient(BroadcastService, transport);
+const system_client = createClient(SystemService, transport);
+
+export type Wallpaper = {
+  url: string;
+  color: string;
+  scope: "contest" | "default";
+};
+
+const fetchWallpaper = async (path: string): Promise<Wallpaper | null> => {
+  const response = await fetch(path);
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.error || `Wallpaper fetch failed: ${response.status}`,
+    );
+  }
+
+  const blob = await response.blob();
+  return {
+    url: URL.createObjectURL(blob),
+    color: response.headers.get("X-Wallpaper-Text-Color") || "#ffffff",
+    scope:
+      response.headers.get("X-Wallpaper-Scope") === "contest"
+        ? "contest"
+        : "default",
+  };
+};
 
 export const adminClient = {
   // contest
@@ -65,21 +98,19 @@ export const adminClient = {
       create(SetMapRequestSchema, { contestId, mapId }),
     );
   },
-  getWallpaper: async (): Promise<{ url: string; color: string }> => {
-    const response = await fetch("/api/wallpaper");
+  getWallpaper: async (): Promise<Wallpaper | null> => {
+    return await fetchWallpaper("/api/wallpaper");
+  },
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.message || `Wallpaper fetch failed: ${response.status}`,
-      );
-    }
-
-    const blob = await response.blob();
-    return {
-      url: URL.createObjectURL(blob),
-      color: response.headers.get("X-Wallpaper-Text-Color") || "#ffffff",
-    };
+  // system
+  getDefaultWallpaper: async (): Promise<Wallpaper | null> => {
+    return await fetchWallpaper("/api/wallpaper/default");
+  },
+  setDefaultWallpaper: async (imageData?: Uint8Array): Promise<void> => {
+    await system_client.setDefaultWallpaper({ imageData });
+  },
+  setDefaultWallpaperTextColor: async (color: string): Promise<void> => {
+    await system_client.setDefaultWallpaperTextColor({ color });
   },
 
   // teams

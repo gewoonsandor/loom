@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE system_settings SET default_wallpaper_id = NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "26395d2d38fcff6ebdc3cfa38fb5f315c2d84e270d86fe765191069dd63a1a15"
+}

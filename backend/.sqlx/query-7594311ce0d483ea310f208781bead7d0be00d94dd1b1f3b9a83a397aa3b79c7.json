@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "DELETE FROM wallpapers WHERE contest_id = $1",
+  "query": "DELETE FROM contest_wallpaper WHERE contest_id = $1",
   "describe": {
     "columns": [],
     "parameters": {
@@ -10,5 +10,5 @@
     },
     "nullable": []
   },
-  "hash": "efc026a32019c67e53aadf217f9880e3362b00d75dcb1a4bf6510de132dbda88"
+  "hash": "7594311ce0d483ea310f208781bead7d0be00d94dd1b1f3b9a83a397aa3b79c7"
 }

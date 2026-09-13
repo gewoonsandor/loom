@@ -101,6 +101,16 @@ pub struct CommandOutputRequest {
     pub admin_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetDefaultWallpaperRequest {
+    #[prost(bytes="vec", optional, tag="1")]
+    pub image_data: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetDefaultWallpaperTextColorRequest {
+    #[prost(string, tag="1")]
+    pub color: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Team {
     #[prost(string, tag="1")]
     pub id: ::prost::alloc::string::String,

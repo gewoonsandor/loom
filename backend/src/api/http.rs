@@ -20,7 +20,10 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     api::ErrorResponse,
-    domain::{ContestRepository, MapRepository, Orchestrator, TeamRepository},
+    domain::{
+        ContestRepository, MapRepository, Orchestrator, TeamRepository, WallpaperRepository,
+        WallpaperStream,
+    },
     error::AppError,
     render,
 };
@@ -32,6 +35,7 @@ pub struct HttpHandlerState {
     contest_repo: Arc<dyn ContestRepository>,
     team_repo: Arc<dyn TeamRepository>,
     map_repo: Arc<dyn MapRepository>,
+    wallpaper_repo: Arc<dyn WallpaperRepository>,
     orchestrator: Arc<dyn Orchestrator>,
 }
 
@@ -45,6 +49,28 @@ impl HttpHandlerState {
             .await?
             .map(|contest| contest.id)
             .ok_or_else(|| AppError::NotFound("no upcoming contest found".to_string()))
+    }
+
+    async fn resolve_wallpaper(
+        &self,
+        requested: Option<String>,
+    ) -> Result<(WallpaperStream, &'static str), AppError> {
+        let contest_id = match requested {
+            Some(id) => Some(id),
+            None => self.contest_repo.get_next_contest().await?.map(|c| c.id),
+        };
+
+        if let Some(contest_id) = contest_id
+            && let Some(wallpaper) = self.wallpaper_repo.get_for_contest(&contest_id).await?
+        {
+            return Ok((wallpaper, "contest"));
+        }
+
+        self.wallpaper_repo
+            .get_default()
+            .await?
+            .map(|wallpaper| (wallpaper, "default"))
+            .ok_or_else(|| AppError::NotFound("no wallpaper found".to_string()))
     }
 
     async fn resolve_ip(
@@ -65,6 +91,7 @@ impl HttpHandlerState {
 pub fn router(state: HttpHandlerState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(wallpaper))
+        .routes(routes!(default_wallpaper))
         .routes(routes!(next_contest))
         .routes(routes!(team_info))
         .routes(routes!(map_image))
@@ -83,6 +110,26 @@ pub struct WallpaperParams {
     pub contest_id: Option<String>,
 }
 
+fn image_response(
+    wallpaper: WallpaperStream,
+    extra_headers: Vec<(HeaderName, String)>,
+) -> impl IntoResponse {
+    let mut headers = vec![
+        (header::CONTENT_TYPE, wallpaper.mime_type),
+        (
+            HeaderName::from_static("x-wallpaper-text-color"),
+            wallpaper.text_color,
+        ),
+    ];
+    headers.extend(extra_headers);
+
+    let body_stream = wallpaper
+        .stream
+        .map(|res| res.map(bytes::Bytes::from).map_err(std::io::Error::other));
+
+    (AppendHeaders(headers), Body::from_stream(body_stream))
+}
+
 #[utoipa::path(
     get,
     path = "/wallpaper",
@@ -92,42 +139,54 @@ pub struct WallpaperParams {
         (status = 200, description = "Wallpaper image bytes", content_type = "image/*",
          headers(
             ("x-wallpaper-text-color" = String, description = "Colour for text drawn over the wallpaper"),
-            ("x-wallpaper-text" = String, description = "Team name; absent when no team matches ip")
+            ("x-wallpaper-text" = String, description = "Team name; absent when no team matches ip"),
+            ("x-wallpaper-scope" = String, description = "`contest` for the contest wallpaper, `default` for the system default")
          )),
-        (status = 404, description = "No upcoming contest, or no wallpaper for the contest", body = ErrorResponse),
+        (status = 404, description = "Neither the contest nor the system has a wallpaper", body = ErrorResponse),
     )
 )]
 pub async fn wallpaper(
     State(state): State<HttpHandlerState>,
     Query(query): Query<WallpaperParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    let contest_id = state.resolve_contest_id(query.contest_id).await?;
+    let (wallpaper, scope) = state.resolve_wallpaper(query.contest_id).await?;
 
-    let wallpaper = state
-        .contest_repo
-        .get_wallpaper(&contest_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("no wallpaper found".to_string()))?;
-
-    let body_stream = wallpaper
-        .stream
-        .map(|res| res.map(bytes::Bytes::from).map_err(std::io::Error::other));
-
-    let mut headers = vec![
-        (header::CONTENT_TYPE, wallpaper.mime_type),
-        (
-            HeaderName::from_static("x-wallpaper-text-color"),
-            wallpaper.text_color,
-        ),
-    ];
+    let mut extra_headers = vec![(
+        HeaderName::from_static("x-wallpaper-scope"),
+        scope.to_string(),
+    )];
 
     if let Some(ip) = query.ip
         && let Some(team) = state.team_repo.get_by_ip(&ip).await?
     {
-        headers.push((HeaderName::from_static("x-wallpaper-text"), team.name));
+        extra_headers.push((HeaderName::from_static("x-wallpaper-text"), team.name));
     }
 
-    Ok((AppendHeaders(headers), Body::from_stream(body_stream)))
+    Ok(image_response(wallpaper, extra_headers))
+}
+
+#[utoipa::path(
+    get,
+    path = "/wallpaper/default",
+    tag = "system",
+    responses(
+        (status = 200, description = "System default wallpaper image bytes", content_type = "image/*",
+         headers(
+            ("x-wallpaper-text-color" = String, description = "Colour for text drawn over the wallpaper")
+         )),
+        (status = 404, description = "No system default wallpaper set", body = ErrorResponse),
+    )
+)]
+pub async fn default_wallpaper(
+    State(state): State<HttpHandlerState>,
+) -> Result<impl IntoResponse, AppError> {
+    let wallpaper = state
+        .wallpaper_repo
+        .get_default()
+        .await?
+        .ok_or_else(|| AppError::NotFound("no default wallpaper set".to_string()))?;
+
+    Ok(image_response(wallpaper, vec![]))
 }
 
 #[derive(Serialize, ToSchema)]

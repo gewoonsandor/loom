@@ -287,7 +287,14 @@ export function ContestPage() {
               </p>
             )}
 
-            {wallpaper?.url && (
+            {wallpaper?.scope === "default" && (
+              <p className="text-gray-400 text-sm mt-3">
+                This contest has no wallpaper, so stations show the system
+                default. Change it under System.
+              </p>
+            )}
+
+            {wallpaper?.scope === "contest" && (
               <div className="mt-4 p-4 rounded-lg bg-surface-700 border border-surface-600">
                 <p className="text-xs text-gray-400 mb-2 uppercase tracking-wide">
                   Text Color
@@ -347,7 +354,11 @@ export function ContestPage() {
             <div className="relative inline-flex items-center justify-center max-w-full max-h-full">
               <img
                 src={wallpaper.url}
-                alt="Contest wallpaper"
+                alt={
+                  wallpaper.scope === "contest"
+                    ? "Contest wallpaper"
+                    : "Default wallpaper"
+                }
                 className="max-w-full max-h-full w-auto h-auto object-contain block"
               />
               {showPreview && (

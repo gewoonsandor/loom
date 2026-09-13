@@ -24,7 +24,8 @@ use utoipa::{OpenApi, ToSchema};
     ),
     tags(
         (name = "station", description = "Consumed by station machines"),
-        (name = "map", description = "Seating map rendering")
+        (name = "map", description = "Seating map rendering"),
+        (name = "system", description = "Deployment-wide settings")
     )
 )]
 pub struct ApiDoc;

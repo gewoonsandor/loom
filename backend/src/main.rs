@@ -4,7 +4,7 @@ use axum::Router;
 use loom_rpc::{
     admin::v1::{
         contest_service_server::ContestServiceServer, station_service_server::StationServiceServer,
-        team_service_server::TeamServiceServer,
+        system_service_server::SystemServiceServer, team_service_server::TeamServiceServer,
     },
     broadcast::v1::broadcast_service_server::BroadcastServiceServer,
     map::v1::map_service_server::MapServiceServer,
@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let map_repo = repositories.get_map();
     let station_repo = repositories.get_station();
     let team_repo = repositories.get_team();
+    let wallpaper_repo = repositories.get_wallpaper();
 
     let orchestrator: Arc<dyn domain::Orchestrator> = Arc::new(Orchestrator::new());
 
@@ -65,8 +66,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api::admin::ContestHandler::new(
             contest_repo.clone(),
             map_repo.clone(),
+            wallpaper_repo.clone(),
             orchestrator.clone(),
         ),
+        interceptor.clone(),
+    );
+    let system_service = SystemServiceServer::with_interceptor(
+        api::admin::SystemHandler::new(wallpaper_repo.clone(), orchestrator.clone()),
         interceptor.clone(),
     );
     let station_service = StationServiceServer::with_interceptor(
@@ -107,11 +113,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         interceptor.clone(),
     );
 
-    let http_state =
-        api::http::HttpHandlerState::new(contest_repo, team_repo, map_repo, orchestrator.clone());
+    let http_state = api::http::HttpHandlerState::new(
+        contest_repo,
+        team_repo,
+        map_repo,
+        wallpaper_repo,
+        orchestrator.clone(),
+    );
 
     let grpc_router = tonic::service::Routes::builder()
         .add_service(contest_service)
+        .add_service(system_service)
         .add_service(station_service)
         .add_service(team_service)
         .add_service(map_service)

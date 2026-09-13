@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT mime_type, text_color, data FROM wallpapers WHERE contest_id = $1",
+  "query": "SELECT w.mime_type, w.text_color, w.data\n             FROM wallpapers w\n             JOIN system_settings s ON s.default_wallpaper_id = w.id",
   "describe": {
     "columns": [
       {
@@ -20,9 +20,7 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Text"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
@@ -30,5 +28,5 @@
       false
     ]
   },
-  "hash": "59c15d42b6fcbb3cddbe75f1af867cb8c21a1020ff813a7cd0c9ae0c8ae092d3"
+  "hash": "12e343923a2078378489554b4f2791ee136db2ef2f6e9d1e8c694de9ba6a0df6"
 }
